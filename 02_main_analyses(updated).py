@@ -5,11 +5,20 @@ Project: Quantitative Analysis of Prospective Cognition, Intrusive Imagery,
 
 Author: Elham Latif
 """
-
 import pandas as pd
 import numpy as np
 from scipy import stats
 import statsmodels.api as sm
+
+
+def sig_stars(p):
+    if p < 0.001:
+        return "***"
+    elif p < 0.01:
+        return "**"
+    elif p < 0.05:
+        return "*"
+    return "ns"
 
 
 def run_correlations(data):
@@ -26,10 +35,10 @@ def run_correlations(data):
 
     for var in vars_to_test:
         temp = data[['Depression_Score', var]].dropna()
-        if len(temp) > 15:
-            r, p = stats.pearsonr(temp['Depression_Score'], temp[var])
-            sig = "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "ns"
-            print(f"{var:25s}  r = {r:7.3f}   p = {p:.4f}  {sig}   (n={len(temp)})")
+        if len(temp) <= 15:
+            continue
+        r, p = stats.pearsonr(temp['Depression_Score'], temp[var])
+        print(f"{var:25s}  r = {r:7.3f}   p = {p:.4f}  {sig_stars(p)}   (n={len(temp)})")
 
     print("\n" + "=" * 65)
     print("CORRELATIONS WITH ANXIETY SCORE")
@@ -37,10 +46,10 @@ def run_correlations(data):
 
     for var in vars_to_test:
         temp = data[['Anxiety_Score', var]].dropna()
-        if len(temp) > 15:
-            r, p = stats.pearsonr(temp['Anxiety_Score'], temp[var])
-            sig = "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "ns"
-            print(f"{var:25s}  r = {r:7.3f}   p = {p:.4f}  {sig}   (n={len(temp)})")
+        if len(temp) <= 15:
+            continue
+        r, p = stats.pearsonr(temp['Anxiety_Score'], temp[var])
+        print(f"{var:25s}  r = {r:7.3f}   p = {p:.4f}  {sig_stars(p)}   (n={len(temp)})")
 
 
 def hierarchical_regression(data):
@@ -54,24 +63,26 @@ def hierarchical_regression(data):
 
     y = reg_data['Depression_Score']
 
-    # Step 1
+    # step 1 - age only, baseline
     X1 = sm.add_constant(reg_data[['Age']])
     m1 = sm.OLS(y, X1).fit()
     print("\nStep 1 (Age only):")
-    print(f"  R² = {m1.rsquared:.3f},  Adj.R² = {m1.rsquared_adj:.3f}")
+    print(f"  R2 = {m1.rsquared:.3f}, Adj.R2 = {m1.rsquared_adj:.3f}")
 
-    # Step 2
+    # step 2 - add sensory imagery
     X2 = sm.add_constant(reg_data[['Age', 'PSIQ_Total']])
     m2 = sm.OLS(y, X2).fit()
     print("\nStep 2 (+ PSIQ_Total):")
-    print(f"  R² = {m2.rsquared:.3f},  Adj.R² = {m2.rsquared_adj:.3f},  ΔR² = {m2.rsquared - m1.rsquared:.3f}")
+    print(f"  R2 = {m2.rsquared:.3f}, Adj.R2 = {m2.rsquared_adj:.3f}, "
+          f"deltaR2 = {m2.rsquared - m1.rsquared:.3f}")
 
-    # Step 3
+    # step 3 - add prospective imagery + intrusion measures
     X3 = sm.add_constant(reg_data[['Age', 'PSIQ_Total', 'PIT_Pos_Vivid',
                                    'PIT_Neg_Vivid', 'IFES_Negative']])
     m3 = sm.OLS(y, X3).fit()
     print("\nStep 3 (+ PIT & IFES):")
-    print(f"  R² = {m3.rsquared:.3f},  Adj.R² = {m3.rsquared_adj:.3f},  ΔR² = {m3.rsquared - m2.rsquared:.3f}")
+    print(f"  R2 = {m3.rsquared:.3f}, Adj.R2 = {m3.rsquared_adj:.3f}, "
+          f"deltaR2 = {m3.rsquared - m2.rsquared:.3f}")
 
     print("\nFinal model coefficients:")
     print(m3.summary().tables[1])
@@ -90,11 +101,13 @@ def group_comparison(data):
     for var in vars_compare:
         g0 = data.loc[data['Depression_Group'] == 0, var].dropna()
         g1 = data.loc[data['Depression_Group'] == 1, var].dropna()
-        if len(g0) > 5 and len(g1) > 5:
-            t, p = stats.ttest_ind(g0, g1, equal_var=False)
-            d = (g1.mean() - g0.mean()) / np.sqrt((g0.std()**2 + g1.std()**2) / 2)
-            sig = "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "ns"
-            print(f"{var:25s}  Non-dep={g0.mean():.2f}  Dep={g1.mean():.2f}  t={t:.2f}  p={p:.4f} {sig}  d={d:.2f}")
+        if len(g0) <= 5 or len(g1) <= 5:
+            continue
+        t, p = stats.ttest_ind(g0, g1, equal_var=False)
+        pooled_sd = np.sqrt((g0.std()**2 + g1.std()**2) / 2)
+        d = (g1.mean() - g0.mean()) / pooled_sd
+        print(f"{var:25s}  Non-dep={g0.mean():.2f}  Dep={g1.mean():.2f}  "
+              f"t={t:.2f}  p={p:.4f} {sig_stars(p)}  d={d:.2f}")
 
 
 def main():
